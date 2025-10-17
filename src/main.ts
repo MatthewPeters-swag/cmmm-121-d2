@@ -15,3 +15,41 @@ const canvas = document.createElement("canvas");
 canvas.width = 256;
 canvas.height = 256;
 document.body.appendChild(canvas);
+
+const ctx = canvas.getContext("2d")!;
+ctx.lineWidth = 2;
+ctx.lineCap = "round";
+ctx.strokeStyle = "black";
+
+// Clear button
+const clearButton = document.createElement("button");
+clearButton.textContent = "Clear Canvas";
+document.body.appendChild(clearButton);
+
+// Clear logic
+clearButton.addEventListener("click", () => {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+});
+
+// Drawing logic
+let drawing = false;
+
+canvas.addEventListener("mousedown", (event) => {
+  drawing = true;
+  ctx.beginPath();
+  ctx.moveTo(event.offsetX, event.offsetY);
+});
+
+canvas.addEventListener("mousemove", (event) => {
+  if (!drawing) return;
+  ctx.lineTo(event.offsetX, event.offsetY);
+  ctx.stroke();
+});
+
+canvas.addEventListener("mouseup", () => {
+  drawing = false;
+});
+
+canvas.addEventListener("mouseleave", () => {
+  drawing = false;
+});
