@@ -3,3 +3,16 @@
   vertical-align: top;
   border: 1px solid salmon;
 }
+
+body {
+  font-family: sans-serif;
+  text-align: center;
+  margin-top: 40px;
+}
+
+/* Style Canvas */
+canvas {
+  border: thin solid black;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
