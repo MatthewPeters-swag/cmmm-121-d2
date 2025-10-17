@@ -16,16 +16,31 @@ ctx.lineWidth = 2;
 ctx.lineCap = "round";
 ctx.strokeStyle = "black";
 
-// --- Clear button ---
-const clearButton = document.createElement("button");
-clearButton.textContent = "Clear Canvas";
-document.body.appendChild(clearButton);
+// --- Buttons ---
+const controls = document.createElement("div");
+controls.style.marginTop = "10px";
+document.body.appendChild(controls);
 
-// --- Data structure ---
+const clearButton = document.createElement("button");
+clearButton.textContent = "Clear";
+controls.appendChild(clearButton);
+
+const undoButton = document.createElement("button");
+undoButton.textContent = "Undo";
+controls.appendChild(undoButton);
+
+const redoButton = document.createElement("button");
+redoButton.textContent = "Redo";
+controls.appendChild(redoButton);
+
+// --- Data structures ---
+// Array of strokes (the display list)
 let strokes: { x: number; y: number }[][] = [];
+// Redo stack
+let redoStack: { x: number; y: number }[][] = [];
+// Current stroke while drawing
 let currentStroke: { x: number; y: number }[] = [];
 
-// --- Drawing state ---
 let drawing = false;
 
 // --- Event: start drawing ---
@@ -33,6 +48,7 @@ canvas.addEventListener("mousedown", (event) => {
   drawing = true;
   currentStroke = [{ x: event.offsetX, y: event.offsetY }];
   strokes.push(currentStroke);
+  redoStack = []; // Clear redo stack when new stroke starts
   canvas.dispatchEvent(new Event("drawing-changed"));
 });
 
@@ -53,9 +69,26 @@ canvas.addEventListener("mouseleave", () => {
   drawing = false;
 });
 
-// --- Clear button ---
+// --- Button: clear ---
 clearButton.addEventListener("click", () => {
   strokes = [];
+  redoStack = [];
+  canvas.dispatchEvent(new Event("drawing-changed"));
+});
+
+// --- Button: undo ---
+undoButton.addEventListener("click", () => {
+  if (strokes.length === 0) return;
+  const undoneStroke = strokes.pop()!;
+  redoStack.push(undoneStroke);
+  canvas.dispatchEvent(new Event("drawing-changed"));
+});
+
+// --- Button: redo ---
+redoButton.addEventListener("click", () => {
+  if (redoStack.length === 0) return;
+  const redoneStroke = redoStack.pop()!;
+  strokes.push(redoneStroke);
   canvas.dispatchEvent(new Event("drawing-changed"));
 });
 
