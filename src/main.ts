@@ -42,7 +42,7 @@ thickButton.textContent = "Thick Marker";
 controls.appendChild(thickButton);
 
 // --- Tool State ---
-let currentThickness = 2; // default
+let currentThickness = 2;
 thinButton.classList.add("selectedTool");
 
 function selectTool(thickness: number, button: HTMLButtonElement) {
@@ -83,15 +83,41 @@ class MarkerLine {
   }
 }
 
+// --- ToolPreview class ---
+class ToolPreview {
+  x: number;
+  y: number;
+  thickness: number;
+
+  constructor(x: number, y: number, thickness: number) {
+    this.x = x;
+    this.y = y;
+    this.thickness = thickness;
+  }
+
+  display(ctx: CanvasRenderingContext2D) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.strokeStyle = "gray";
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.6;
+    ctx.arc(this.x, this.y, this.thickness / 2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
 // --- Data structures ---
 let strokes: MarkerLine[] = [];
 let redoStack: MarkerLine[] = [];
 let currentStroke: MarkerLine | null = null;
+let toolPreview: ToolPreview | null = null;
 let drawing = false;
 
 // --- Event: start drawing ---
 canvas.addEventListener("mousedown", (event) => {
   drawing = true;
+  toolPreview = null;
   currentStroke = new MarkerLine(
     event.offsetX,
     event.offsetY,
@@ -104,9 +130,17 @@ canvas.addEventListener("mousedown", (event) => {
 
 // --- Event: drag ---
 canvas.addEventListener("mousemove", (event) => {
-  if (!drawing || !currentStroke) return;
-  currentStroke.drag(event.offsetX, event.offsetY);
-  canvas.dispatchEvent(new Event("drawing-changed"));
+  if (drawing && currentStroke) {
+    currentStroke.drag(event.offsetX, event.offsetY);
+    canvas.dispatchEvent(new Event("drawing-changed"));
+  } else {
+    // Fire tool-moved event
+    canvas.dispatchEvent(
+      new CustomEvent("tool-moved", {
+        detail: { x: event.offsetX, y: event.offsetY },
+      }),
+    );
+  }
 });
 
 // --- Event: stop drawing ---
@@ -118,6 +152,8 @@ canvas.addEventListener("mouseup", () => {
 canvas.addEventListener("mouseleave", () => {
   drawing = false;
   currentStroke = null;
+  toolPreview = null;
+  canvas.dispatchEvent(new Event("drawing-changed"));
 });
 
 // --- Clear ---
@@ -143,10 +179,22 @@ redoButton.addEventListener("click", () => {
   canvas.dispatchEvent(new Event("drawing-changed"));
 });
 
+// --- Tool preview handler ---
+canvas.addEventListener("tool-moved", (event: Event) => {
+  const { x, y } = (event as CustomEvent).detail;
+  if (!drawing) {
+    toolPreview = new ToolPreview(x, y, currentThickness);
+    canvas.dispatchEvent(new Event("drawing-changed"));
+  }
+});
+
 // --- Redraw observer ---
 canvas.addEventListener("drawing-changed", () => {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   for (const stroke of strokes) {
     stroke.display(ctx);
+  }
+  if (toolPreview) {
+    toolPreview.display(ctx);
   }
 });
