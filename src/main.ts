@@ -15,7 +15,7 @@ const ctx = canvas.getContext("2d")!;
 ctx.lineCap = "round";
 ctx.strokeStyle = "black";
 
-// --- Buttons ---
+// --- Controls ---
 const controls = document.createElement("div");
 controls.style.marginTop = "10px";
 document.body.appendChild(controls);
@@ -41,20 +41,64 @@ const thickButton = document.createElement("button");
 thickButton.textContent = "Thick Marker";
 controls.appendChild(thickButton);
 
+// --- Sticker Buttons ---
+const stickerButtons: { emoji: string; button: HTMLButtonElement }[] = [];
+const stickers = ["🐱", "🌸", "🚀"];
+for (const emoji of stickers) {
+  const btn = document.createElement("button");
+  btn.textContent = emoji;
+  controls.appendChild(btn);
+  stickerButtons.push({ emoji, button: btn });
+}
+
 // --- Tool State ---
+let currentTool: "marker" | "sticker" = "marker";
 let currentThickness = 2;
+let currentSticker: string | null = null;
 thinButton.classList.add("selectedTool");
 
-function selectTool(thickness: number, button: HTMLButtonElement) {
+function selectMarker(thickness: number, button: HTMLButtonElement) {
+  currentTool = "marker";
+  currentSticker = null;
   currentThickness = thickness;
-  for (const btn of [thinButton, thickButton]) {
+  for (
+    const btn of [
+      thinButton,
+      thickButton,
+      ...stickerButtons.map((s) => s.button),
+    ]
+  ) {
     btn.classList.remove("selectedTool");
   }
   button.classList.add("selectedTool");
 }
 
-thinButton.addEventListener("click", () => selectTool(2, thinButton));
-thickButton.addEventListener("click", () => selectTool(6, thickButton));
+thinButton.addEventListener("click", () => selectMarker(2, thinButton));
+thickButton.addEventListener("click", () => selectMarker(6, thickButton));
+
+// Sticker selection
+for (const { emoji, button } of stickerButtons) {
+  button.addEventListener("click", () => {
+    currentTool = "sticker";
+    currentSticker = emoji;
+    for (
+      const btn of [
+        thinButton,
+        thickButton,
+        ...stickerButtons.map((s) => s.button),
+      ]
+    ) {
+      btn.classList.remove("selectedTool");
+    }
+    button.classList.add("selectedTool");
+    // Fire a tool-moved event to trigger preview update
+    canvas.dispatchEvent(
+      new CustomEvent("tool-moved", {
+        detail: { x: -100, y: -100 }, // offscreen until moved
+      }),
+    );
+  });
+}
 
 // --- MarkerLine class ---
 class MarkerLine {
@@ -83,58 +127,104 @@ class MarkerLine {
   }
 }
 
+// --- StickerCommand class ---
+class StickerCommand {
+  private emoji: string;
+  private x: number;
+  private y: number;
+
+  constructor(emoji: string, x: number, y: number) {
+    this.emoji = emoji;
+    this.x = x;
+    this.y = y;
+  }
+
+  drag(x: number, y: number) {
+    // Reposition sticker instead of tracking history
+    this.x = x;
+    this.y = y;
+  }
+
+  display(ctx: CanvasRenderingContext2D) {
+    ctx.font = "32px serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(this.emoji, this.x, this.y);
+  }
+}
+
 // --- ToolPreview class ---
 class ToolPreview {
   x: number;
   y: number;
   thickness: number;
+  emoji: string | null;
 
-  constructor(x: number, y: number, thickness: number) {
+  constructor(x: number, y: number, thickness: number, emoji: string | null) {
     this.x = x;
     this.y = y;
     this.thickness = thickness;
+    this.emoji = emoji;
   }
 
   display(ctx: CanvasRenderingContext2D) {
     ctx.save();
-    ctx.beginPath();
-    ctx.strokeStyle = "gray";
-    ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.6;
-    ctx.arc(this.x, this.y, this.thickness / 2, 0, Math.PI * 2);
-    ctx.stroke();
+    if (this.emoji) {
+      ctx.globalAlpha = 0.6;
+      ctx.font = "32px serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(this.emoji, this.x, this.y);
+    } else {
+      ctx.beginPath();
+      ctx.strokeStyle = "gray";
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.6;
+      ctx.arc(this.x, this.y, this.thickness / 2, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 }
 
 // --- Data structures ---
-let strokes: MarkerLine[] = [];
-let redoStack: MarkerLine[] = [];
-let currentStroke: MarkerLine | null = null;
+let strokes: (MarkerLine | StickerCommand)[] = [];
+let redoStack: (MarkerLine | StickerCommand)[] = [];
+let currentStroke: MarkerLine | StickerCommand | null = null;
 let toolPreview: ToolPreview | null = null;
 let drawing = false;
 
-// --- Event: start drawing ---
+// --- Drawing Events ---
 canvas.addEventListener("mousedown", (event) => {
   drawing = true;
   toolPreview = null;
-  currentStroke = new MarkerLine(
-    event.offsetX,
-    event.offsetY,
-    currentThickness,
-  );
-  strokes.push(currentStroke);
-  redoStack = [];
-  canvas.dispatchEvent(new Event("drawing-changed"));
+
+  if (currentTool === "marker") {
+    currentStroke = new MarkerLine(
+      event.offsetX,
+      event.offsetY,
+      currentThickness,
+    );
+  } else if (currentTool === "sticker" && currentSticker) {
+    currentStroke = new StickerCommand(
+      currentSticker,
+      event.offsetX,
+      event.offsetY,
+    );
+  }
+
+  if (currentStroke) {
+    strokes.push(currentStroke);
+    redoStack = [];
+    canvas.dispatchEvent(new Event("drawing-changed"));
+  }
 });
 
-// --- Event: drag ---
 canvas.addEventListener("mousemove", (event) => {
   if (drawing && currentStroke) {
     currentStroke.drag(event.offsetX, event.offsetY);
     canvas.dispatchEvent(new Event("drawing-changed"));
   } else {
-    // Fire tool-moved event
     canvas.dispatchEvent(
       new CustomEvent("tool-moved", {
         detail: { x: event.offsetX, y: event.offsetY },
@@ -143,7 +233,6 @@ canvas.addEventListener("mousemove", (event) => {
   }
 });
 
-// --- Event: stop drawing ---
 canvas.addEventListener("mouseup", () => {
   drawing = false;
   currentStroke = null;
@@ -163,7 +252,7 @@ clearButton.addEventListener("click", () => {
   canvas.dispatchEvent(new Event("drawing-changed"));
 });
 
-// --- Undo ---
+// --- Undo / Redo ---
 undoButton.addEventListener("click", () => {
   if (strokes.length === 0) return;
   const undone = strokes.pop()!;
@@ -171,7 +260,6 @@ undoButton.addEventListener("click", () => {
   canvas.dispatchEvent(new Event("drawing-changed"));
 });
 
-// --- Redo ---
 redoButton.addEventListener("click", () => {
   if (redoStack.length === 0) return;
   const redone = redoStack.pop()!;
@@ -183,7 +271,7 @@ redoButton.addEventListener("click", () => {
 canvas.addEventListener("tool-moved", (event: Event) => {
   const { x, y } = (event as CustomEvent).detail;
   if (!drawing) {
-    toolPreview = new ToolPreview(x, y, currentThickness);
+    toolPreview = new ToolPreview(x, y, currentThickness, currentSticker);
     canvas.dispatchEvent(new Event("drawing-changed"));
   }
 });
