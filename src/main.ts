@@ -145,6 +145,7 @@ interface StickerDef {
 const stickers: StickerDef[] = [
   { emoji: "⭐" },
   { emoji: "🔥" },
+  { emoji: "🌈" },
   { emoji: "🐸" },
 ];
 
