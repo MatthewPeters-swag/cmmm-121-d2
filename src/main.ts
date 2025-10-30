@@ -15,11 +15,12 @@ const ctx = canvas.getContext("2d")!;
 ctx.lineCap = "round";
 ctx.strokeStyle = "black";
 
-// --- Controls ---
+// --- Controls container ---
 const controls = document.createElement("div");
 controls.style.marginTop = "10px";
 document.body.appendChild(controls);
 
+// --- Buttons ---
 const clearButton = document.createElement("button");
 clearButton.textContent = "Clear";
 controls.appendChild(clearButton);
@@ -32,7 +33,7 @@ const redoButton = document.createElement("button");
 redoButton.textContent = "Redo";
 controls.appendChild(redoButton);
 
-// --- Tool Buttons ---
+// --- Marker buttons ---
 const thinButton = document.createElement("button");
 thinButton.textContent = "Thin Marker";
 controls.appendChild(thinButton);
@@ -41,15 +42,64 @@ const thickButton = document.createElement("button");
 thickButton.textContent = "Thick Marker";
 controls.appendChild(thickButton);
 
-// --- Sticker Buttons ---
-const stickerButtons: { emoji: string; button: HTMLButtonElement }[] = [];
-const stickers = ["🐱", "🌸", "🚀"];
-for (const emoji of stickers) {
-  const btn = document.createElement("button");
-  btn.textContent = emoji;
-  controls.appendChild(btn);
-  stickerButtons.push({ emoji, button: btn });
+// --- Sticker setup (data-driven) ---
+interface Sticker {
+  emoji: string;
 }
+
+let stickerData: Sticker[] = [
+  { emoji: "🐱" },
+  { emoji: "🌸" },
+  { emoji: "🚀" },
+];
+
+const stickerContainer = document.createElement("div");
+stickerContainer.style.marginTop = "10px";
+document.body.appendChild(stickerContainer);
+
+const customStickerButton = document.createElement("button");
+customStickerButton.textContent = "➕ Custom Sticker";
+stickerContainer.appendChild(customStickerButton);
+
+const stickerButtons: HTMLButtonElement[] = [];
+
+// Function to rebuild sticker buttons whenever a new one is added
+function buildStickerButtons() {
+  // Remove old buttons (except the custom sticker button)
+  for (const btn of stickerButtons) btn.remove();
+  stickerButtons.length = 0;
+
+  for (const { emoji } of stickerData) {
+    const btn = document.createElement("button");
+    btn.textContent = emoji;
+    stickerContainer.appendChild(btn);
+    stickerButtons.push(btn);
+
+    btn.addEventListener("click", () => {
+      currentTool = "sticker";
+      currentSticker = emoji;
+      deselectAllTools();
+      btn.classList.add("selectedTool");
+      canvas.dispatchEvent(
+        new CustomEvent("tool-moved", {
+          detail: { x: -100, y: -100 },
+        }),
+      );
+    });
+  }
+}
+
+// Build the initial stickers
+buildStickerButtons();
+
+// --- Add custom sticker button behavior ---
+customStickerButton.addEventListener("click", () => {
+  const input = prompt("Enter your custom sticker (emoji or text):", "⭐");
+  if (input && input.trim() !== "") {
+    stickerData.push({ emoji: input.trim() });
+    buildStickerButtons(); // Rebuild UI with new sticker
+  }
+});
 
 // --- Tool State ---
 let currentTool: "marker" | "sticker" = "marker";
@@ -57,48 +107,29 @@ let currentThickness = 2;
 let currentSticker: string | null = null;
 thinButton.classList.add("selectedTool");
 
-function selectMarker(thickness: number, button: HTMLButtonElement) {
-  currentTool = "marker";
-  currentSticker = null;
-  currentThickness = thickness;
+function deselectAllTools() {
   for (
     const btn of [
       thinButton,
       thickButton,
-      ...stickerButtons.map((s) => s.button),
+      ...stickerButtons,
+      customStickerButton,
     ]
   ) {
     btn.classList.remove("selectedTool");
   }
+}
+
+function selectMarker(thickness: number, button: HTMLButtonElement) {
+  currentTool = "marker";
+  currentSticker = null;
+  currentThickness = thickness;
+  deselectAllTools();
   button.classList.add("selectedTool");
 }
 
 thinButton.addEventListener("click", () => selectMarker(2, thinButton));
 thickButton.addEventListener("click", () => selectMarker(6, thickButton));
-
-// Sticker selection
-for (const { emoji, button } of stickerButtons) {
-  button.addEventListener("click", () => {
-    currentTool = "sticker";
-    currentSticker = emoji;
-    for (
-      const btn of [
-        thinButton,
-        thickButton,
-        ...stickerButtons.map((s) => s.button),
-      ]
-    ) {
-      btn.classList.remove("selectedTool");
-    }
-    button.classList.add("selectedTool");
-    // Fire a tool-moved event to trigger preview update
-    canvas.dispatchEvent(
-      new CustomEvent("tool-moved", {
-        detail: { x: -100, y: -100 }, // offscreen until moved
-      }),
-    );
-  });
-}
 
 // --- MarkerLine class ---
 class MarkerLine {
@@ -140,7 +171,6 @@ class StickerCommand {
   }
 
   drag(x: number, y: number) {
-    // Reposition sticker instead of tracking history
     this.x = x;
     this.y = y;
   }
